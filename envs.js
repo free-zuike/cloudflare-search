@@ -14,7 +14,12 @@ export const env = {
   ],
 
   // Google Custom Search API credentials
+  // 方式一：API Key（已弃用，Google 不再支持）
   GOOGLE_API_KEY: null,
+  // 方式二：OAuth2 Service Account（推荐）
+  // 设置 GOOGLE_SERVICE_ACCOUNT_JSON 为完整的 Service Account JSON key 字符串
+  // 同时需要 GOOGLE_CX（搜索引擎 ID）
+  GOOGLE_SERVICE_ACCOUNT_JSON: null,
   GOOGLE_CX: null,
 
   // API 访问令牌 - API access token for authentication
