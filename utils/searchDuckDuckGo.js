@@ -1,126 +1,98 @@
 import { normalizeResults } from "./index.js";
 
-function decodeHTMLEntities(text) {
-  if (!text) return "";
-  return text
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&#x2F;/g, "/")
-    .replace(/&#39;/g, "'").replace(/<[^>]*>/g, "");
-}
-
 /**
- * 从 DuckDuckGo HTML 响应中提取搜索结果
- * 匹配当前 DuckDuckGo HTML 结构（class="result results_links_deep"）
+ * 使用 DuckDuckGo Instant Answer API（零点击摘要）
+ * 免费、稳定、不会被限流；返回结果较少但可用
+ * 如果无结果，回退到 HTML 爬虫（不稳定）
  */
-function extractResultsFromHTML(html) {
-  const results = [];
+async function searchDuckDuckGo({ query, signal }) {
+  if (!query) return [];
 
-  // 匹配每个结果块：<div class="result results_links_deep ...">
-  const blockRegex = /<div[^>]*class="[^"]*result[^"]*results_links_deep[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
-  let blockMatch;
-  while ((blockMatch = blockRegex.exec(html)) !== null) {
-    const block = blockMatch[1];
-
-    // 提取标题：<h2 class="result__title"> 或 <a class="result__a">
-    const titleMatch = block.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
-    if (!titleMatch) continue;
-    const title = titleMatch[1].replace(/<[^>]*>/g, "").trim();
-    if (!title) continue;
-
-    // 提取 URL：从 href 属性中获取，或从 DuckDuckGo 重定向链接参数中解码
-    const hrefMatch = block.match(/<a[^>]*href="([^"]+)"[^>]*class="[^"]*result__a[^"]*"/i);
-    let url = "";
-    if (hrefMatch) {
-      let href = hrefMatch[1];
-      // DuckDuckGo 使用重定向链接 //duckduckgo.com/l/?uddg=...
-      if (href.includes("uddg=")) {
-        try {
-          url = decodeURIComponent(href.match(/uddg=([^&]+)/)?.[1] || "");
-        } catch {}
-      } else if (href.startsWith("//")) {
-        url = "https:" + href;
-      } else if (href.startsWith("http")) {
-        url = href;
-      }
-    }
-    if (!url) continue;
-
-    // 提取描述：<a class="result__snippet"> 或 <div class="result__snippet">
-    const snippetMatch = block.match(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i)
-      || block.match(/<div[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-    const description = snippetMatch ? snippetMatch[1].replace(/<[^>]*>/g, "").trim() : "";
-
-    results.push({
-      title: decodeHTMLEntities(title),
-      url,
-      description: decodeHTMLEntities(description),
-    });
-  }
-
-  // 兜底：如果上面匹配不到，用更宽松的匹配
-  if (results.length === 0) {
-    const fallbackRegex = /<a[^>]*rel="nofollow"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi;
-    let fbMatch;
-    while ((fbMatch = fallbackRegex.exec(html)) !== null) {
-      let url = fbMatch[1];
-      if (url.startsWith("//")) url = "https:" + url;
-      const title = fbMatch[2].replace(/<[^>]*>/g, "").trim();
-      if (title && url.startsWith("http")) {
-        results.push({ title: decodeHTMLEntities(title), url, description: "" });
-      }
-    }
-  }
-
-  return results;
-}
-
-async function searchDuckDuckGo({ query, language, time_range, pageno, signal }) {
   try {
-    if (!query) throw new Error("Query cannot be empty!");
+    // 优先使用 Instant Answer API
+    const apiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+    const apiResp = await fetch(apiUrl, {
+      signal,
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; ClawBot/1.0)" },
+    });
 
-    const queryParams = {
-      q: query,
-      kl: language === "zh" ? "cn-zh" : "wt-wt",
-      df: time_range || "",
-      s: String((pageno || 0) * 30),
-    };
+    if (apiResp.ok) {
+      const data = await apiResp.json();
+      const results = [];
 
-    const queryString = Object.entries(queryParams)
-      .filter(([_, v]) => v !== "")
-      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-      .join("&");
+      // Abstract 摘要
+      if (data.AbstractText && data.AbstractURL) {
+        results.push({
+          title: data.Headline || data.AbstractSource || "摘要",
+          url: data.AbstractURL,
+          description: data.AbstractText,
+        });
+      }
 
-    const searchUrl = `https://html.duckduckgo.com/html/?${queryString}`;
+      // RelatedTopics 相关结果
+      if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
+        for (const topic of data.RelatedTopics) {
+          if (topic.Topics) {
+            // 分类下的子话题
+            for (const sub of topic.Topics) {
+              if (sub.Text && sub.FirstURL) {
+                results.push({
+                  title: sub.Text.split(" - ")[0] || sub.Text,
+                  url: sub.FirstURL,
+                  description: sub.Text,
+                });
+              }
+            }
+          } else if (topic.Text && topic.FirstURL) {
+            results.push({
+              title: topic.Text.split(" - ")[0] || topic.Text,
+              url: topic.FirstURL,
+              description: topic.Text,
+            });
+          }
+        }
+      }
 
-    const response = await fetch(searchUrl, {
+      if (results.length > 0) {
+        return normalizeResults(results);
+      }
+    }
+  } catch {
+    // API 失败，回退到 HTML 爬虫
+  }
+
+  // 回退：HTML 爬虫（不稳定，可能被限流）
+  try {
+    const htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const htmlResp = await fetch(htmlUrl, {
       signal,
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Accept: "text/html",
         Referer: "https://duckduckgo.com/",
       },
     });
+    if (!htmlResp.ok) return [];
+    const html = await htmlResp.text();
+    if (html.length < 20000) return []; // 太短说明被重定向了
 
-    if (!response.ok) {
-      console.error(`[DuckDuckGo] Search failed: ${response.status}`);
-      return [];
+    // 从 HTML 中提取链接（兜底）
+    const results = [];
+    const linkRe = /<a[^>]*rel="nofollow"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi;
+    let m;
+    while ((m = linkRe.exec(html)) !== null) {
+      let url = m[1];
+      if (url.startsWith("//")) url = "https:" + url;
+      const title = m[2].replace(/<[^>]*>/g, "").trim();
+      if (title && url.startsWith("http")) {
+        results.push({ title, url, description: "" });
+        if (results.length >= 8) break;
+      }
     }
+    if (results.length > 0) return normalizeResults(results);
+  } catch {}
 
-    const html = await response.text();
-    console.log(`[DuckDuckGo] HTML length: ${html.length}, sample: ${html.slice(0, 600)}`);
-    const results = extractResultsFromHTML(html);
-
-    if (results.length === 0) {
-      console.log(`[DuckDuckGo] No results found for query: ${query}`);
-      return [];
-    }
-
-    return normalizeResults(results);
-  } catch (error) {
-    console.error("[DuckDuckGo] Search error:", error.message);
-    return [];
-  }
+  return [];
 }
 
 export default searchDuckDuckGo;
