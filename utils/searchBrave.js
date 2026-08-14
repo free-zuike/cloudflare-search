@@ -1,5 +1,10 @@
 import { normalizeResults } from "./index.js";
 
+// 修复不带引号的 JSON key（Brave 的 SSE 数据是非标准 JSON）
+function fixJsonKeys(str) {
+  return str.replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3');
+}
+
 // type subSearch under index.d.ts
 // TODO: support language, time_range, pageno
 async function searchBrave({ query, language, time_range, pageno, signal }) {
@@ -47,7 +52,7 @@ async function searchBrave({ query, language, time_range, pageno, signal }) {
         "data: ".length,
         pureLine.endsWith(",") ? -1 : undefined
       );
-      data = eval("(" + jsonStr + ")");
+      data = JSON.parse(fixJsonKeys(jsonStr));
     }
   });
 
