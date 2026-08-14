@@ -84,7 +84,10 @@ async function getOAuth2Token() {
 
 async function searchGoogle({ query, language, time_range, pageno, signal, _retried }) {
   const token = await getOAuth2Token();
-  const searchUrl = `https://www.googleapis.com/customsearch/v1?cx=${env.GOOGLE_CX}&q=${encodeURIComponent(query)}`;
+  // Custom Search API 需要 key 参数做配额跟踪，即使 OAuth2 认证也必须有
+  const apiKey = env.GOOGLE_API_KEY || "";
+  const keyParam = apiKey ? `key=${apiKey}&` : "";
+  const searchUrl = `https://www.googleapis.com/customsearch/v1?${keyParam}cx=${env.GOOGLE_CX}&q=${encodeURIComponent(query)}`;
 
   const response = await fetch(searchUrl, {
     signal,
