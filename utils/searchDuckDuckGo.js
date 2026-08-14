@@ -18,6 +18,7 @@ async function searchDuckDuckGo({ query, signal }) {
 
     if (apiResp.ok) {
       const data = await apiResp.json();
+      console.log(`[DuckDuckGo] API keys: ${Object.keys(data).join(", ")}`);
       const results = [];
 
       // Abstract 摘要
