@@ -95,6 +95,12 @@ async function searchGoogle({ query, language, time_range, pageno, signal, _retr
   const apiKey = env.GOOGLE_API_KEY || "";
   const keyParam = apiKey ? `key=${apiKey}&` : "";
   const searchUrl = `https://www.googleapis.com/customsearch/v1?${keyParam}cx=${env.GOOGLE_CX}&q=${encodeURIComponent(query)}`;
+  console.log(`[google] Calling: cx=${env.GOOGLE_CX}, q=${query}`);
+
+  const response = await fetch(searchUrl, {
+    signal,
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
   const response = await fetch(searchUrl, {
     signal,
