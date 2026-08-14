@@ -10,7 +10,7 @@ export const env = {
     "google",
     "brave",
     "duckduckgo",
-    // "bing" // Bing 目前结果不稳定，默认禁用 - Bing results are currently unstable, disabled by default
+    "bing",
   ],
 
   // Google Custom Search API credentials
