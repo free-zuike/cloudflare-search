@@ -18,17 +18,16 @@ const SEARCH_ENGINES = {
  * @returns {string[]} Array of valid engine names
  */
 function parseEngines(enginesParam) {
-  if (!enginesParam) return env.DEFAULT_ENGINES || env.SUPPORTED_ENGINES;
+  const engines = enginesParam
+    ? enginesParam.split(",").map((e) => e.trim().toLowerCase())
+    : (env.DEFAULT_ENGINES || env.SUPPORTED_ENGINES);
 
-  return enginesParam
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter((e) => {
-      // Filter out google if not enabled
-      if (e === "google" && !(env.GOOGLE_API_KEY && env.GOOGLE_CX))
-        return false;
-      return env.SUPPORTED_ENGINES.includes(e);
-    });
+  return engines.filter((e) => {
+    // Filter out google if not enabled
+    if (e === "google" && !(env.GOOGLE_API_KEY && env.GOOGLE_CX))
+      return false;
+    return env.SUPPORTED_ENGINES.includes(e);
+  });
 }
 
 /**
@@ -86,6 +85,7 @@ async function searchAll({ query, engines }) {
   // Collect resultsArr and track unresponsive engines
   const results = [];
   const unresponsive = [];
+  const errors = [];
 
   resultsArr.forEach((result, index) => {
     const engineName = enabledEngines[index];
@@ -99,7 +99,9 @@ async function searchAll({ query, engines }) {
     } else {
       unresponsive.push(engineName);
       if (result.status === "rejected") {
-        console.error(`[${engineName}] Rejected:`, result.reason);
+        const msg = result.reason?.message || String(result.reason);
+        console.error(`[${engineName}] Rejected:`, msg);
+        errors.push({ engine: engineName, error: msg.slice(0, 200) });
       }
     }
   });
@@ -109,6 +111,7 @@ async function searchAll({ query, engines }) {
     number_of_results: results.length,
     enabled_engines: enabledEngines,
     unresponsive_engines: unresponsive,
+    errors: errors.length > 0 ? errors : undefined,
     results,
   };
 }

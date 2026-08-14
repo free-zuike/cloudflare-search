@@ -11,8 +11,10 @@ async function searchGoogle({ query, language, time_range, pageno, signal }) {
   const response = await fetch(searchUrl, { signal });
 
   if (!response.ok) {
-    console.error(await response.text());
-    return [];
+    const errBody = await response.text();
+    console.error(errBody);
+    // 抛出错误信息，让上层能返回给调用方
+    throw new Error(`Google API error ${response.status}: ${errBody.slice(0, 200)}`);
   }
 
   const data = await response.json();
