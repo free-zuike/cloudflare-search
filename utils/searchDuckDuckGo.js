@@ -18,7 +18,6 @@ async function searchDuckDuckGo({ query, signal }) {
 
     if (apiResp.ok) {
       const data = await apiResp.json();
-      console.log(`[DuckDuckGo] API keys: ${Object.keys(data).join(", ")}`);
       const results = [];
 
       // Abstract 摘要
@@ -30,11 +29,23 @@ async function searchDuckDuckGo({ query, signal }) {
         });
       }
 
+      // Results 搜索结果列表（主要来源）
+      if (data.Results && Array.isArray(data.Results)) {
+        for (const item of data.Results) {
+          if (item.Text && item.FirstURL) {
+            results.push({
+              title: item.Text.split(" - ")[0] || item.Text,
+              url: item.FirstURL,
+              description: item.Text,
+            });
+          }
+        }
+      }
+
       // RelatedTopics 相关结果
       if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
         for (const topic of data.RelatedTopics) {
           if (topic.Topics) {
-            // 分类下的子话题
             for (const sub of topic.Topics) {
               if (sub.Text && sub.FirstURL) {
                 results.push({
