@@ -14,11 +14,15 @@ async function getOAuth2Token() {
   if (!saJson) {
     throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON 未配置");
   }
-  const sa = typeof saJson === "string" ? JSON.parse(saJson) : saJson;
-  const { client_email, private_key } = sa;
-  if (!client_email || !private_key) {
-    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON 缺少 client_email 或 private_key");
+  let sa;
+  try {
+    sa = typeof saJson === "string" ? JSON.parse(saJson) : saJson;
+  } catch {
+    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON 格式错误，不是有效的 JSON");
   }
+  const { client_email, private_key } = sa;
+  if (!client_email) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON 缺少 client_email");
+  if (!private_key) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON 缺少 private_key");
 
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: "RS256", typ: "JWT" };
@@ -84,7 +88,10 @@ async function getOAuth2Token() {
 
 async function searchGoogle({ query, language, time_range, pageno, signal, _retried }) {
   const token = await getOAuth2Token();
-  // Custom Search API 需要 key 参数做配额跟踪，即使 OAuth2 认证也必须有
+  if (!env.GOOGLE_CX) {
+    throw new Error("GOOGLE_CX 未配置（搜索引擎 ID）");
+  }
+
   const apiKey = env.GOOGLE_API_KEY || "";
   const keyParam = apiKey ? `key=${apiKey}&` : "";
   const searchUrl = `https://www.googleapis.com/customsearch/v1?${keyParam}cx=${env.GOOGLE_CX}&q=${encodeURIComponent(query)}`;
