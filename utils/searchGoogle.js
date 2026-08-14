@@ -102,11 +102,6 @@ async function searchGoogle({ query, language, time_range, pageno, signal, _retr
     headers: { Authorization: `Bearer ${token}` },
   });
 
-  const response = await fetch(searchUrl, {
-    signal,
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
   if (!response.ok) {
     const errBody = await response.text();
     console.error(errBody);
