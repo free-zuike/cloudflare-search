@@ -108,6 +108,7 @@ async function searchDuckDuckGo({ query, language, time_range, pageno, signal })
     }
 
     const html = await response.text();
+    console.log(`[DuckDuckGo] HTML length: ${html.length}, sample: ${html.slice(0, 600)}`);
     const results = extractResultsFromHTML(html);
 
     if (results.length === 0) {
